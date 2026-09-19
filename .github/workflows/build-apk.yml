@@ -28,15 +28,23 @@ jobs:
 
           tar -xzf "$archive"
 
-          settings_file="$(find . -maxdepth 5 \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)"
+          settings_file=""
+          while IFS= read -r candidate; do
+            dir="$(dirname "$candidate")"
+            if [ -f "$dir/gradlew" ] || [ -f "$dir/build.gradle" ] || [ -f "$dir/build.gradle.kts" ]; then
+              settings_file="$candidate"
+              break
+            fi
+          done < <(find . -type f \( -name settings.gradle -o -name settings.gradle.kts \) 2>/dev/null)
 
           if [ -z "$settings_file" ]; then
             echo "::error::Archive did not contain a Gradle project"
-            find . -maxdepth 5 -type f | sort
+            find . -maxdepth 12 -type f | sort
             exit 1
           fi
 
-          echo "PROJECT_DIR=$(dirname "$settings_file")" >> "$GITHUB_ENV"
+          project_dir="$(dirname "$settings_file")"
+          echo "PROJECT_DIR=$project_dir" >> "$GITHUB_ENV"
 
       - name: Set up Java
         uses: actions/setup-java@v5
@@ -54,7 +62,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          export ANDROID_SDK_ROOT="$sdk_root"
+          export ANDROID_HOME="$sdk_root"
+
           yes | sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set Android SDK environment
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_SDK_ROOT=$sdk_root" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$sdk_root" >> "$GITHUB_ENV"
+          echo "PATH=$PATH:$sdk_root/platform-tools:$sdk_root/build-tools/35.0.0" >> "$GITHUB_ENV"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -64,14 +87,17 @@ jobs:
       - name: Build debug APK
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
         run: |
           set -euo pipefail
 
           if [ -f ./gradlew ]; then
             chmod +x ./gradlew
-            ./gradlew assembleDebug --no-daemon
+            ./gradlew assembleDebug --no-daemon --stacktrace
           else
-            gradle assembleDebug --no-daemon
+            gradle assembleDebug --no-daemon --stacktrace
           fi
 
       - name: Upload APK
