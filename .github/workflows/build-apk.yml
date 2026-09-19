@@ -67,9 +67,10 @@ jobs:
           export ANDROID_SDK_ROOT="$sdk_root"
           export ANDROID_HOME="$sdk_root"
 
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
           yes | sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Set Android SDK environment
+      - name: Export Android SDK env
         shell: bash
         run: |
           set -euo pipefail
@@ -106,4 +107,4 @@ jobs:
           name: spotify-float-debug
           if-no-files-found: error
           path: |
-            ${{ env.PROJECT_DIR }}/**/*.apk
+            ${{ env.PROJECT_DIR }}/**/build/outputs/apk/**/*.apk
